@@ -9,9 +9,13 @@ class YtDlpHelper {
     constructor() {
         this.ytdlpPath = 'yt-dlp'; // Asumimos que yt-dlp está en PATH
         // Args comunes para mitigar 403/throttling y cambios de firma (nsig)
-        this.commonArgs = [
-            '--force-ipv4',
-            '--extractor-args', 'youtube:player_client=web',
+        this.defaultClient = 'web';
+        this.forceIPv4 = true;
+    }
+
+    getCommonArgs(client = this.defaultClient, opts = { forceIPv4: this.forceIPv4 }) {
+        const args = [
+            '--extractor-args', `youtube:player_client=${client}`,
             '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
             '--add-header', 'Accept-Language:es-ES,es;q=0.9,en;q=0.8',
             '--add-header', 'Referer:https://www.youtube.com',
@@ -21,10 +25,12 @@ class YtDlpHelper {
             '--fragment-retries', '10',
             '--sleep-requests', '1'
         ];
+        if (opts.forceIPv4) args.unshift('--force-ipv4');
+        return args;
     }
 
-    buildArgs(extraArgs = []) {
-        return [...this.commonArgs, ...extraArgs];
+    buildArgs(extraArgs = [], client = this.defaultClient, opts) {
+        return [...this.getCommonArgs(client, opts || { forceIPv4: this.forceIPv4 }), ...extraArgs];
     }
 
     /**
@@ -84,64 +90,83 @@ class YtDlpHelper {
      */
     async downloadAudio(url, outputPath, onProgress = null) {
         return new Promise((resolve, reject) => {
-            const args = this.buildArgs([
-                '--extract-audio',
-                '--audio-format', 'mp3',
-                '--audio-quality', '0', // Mejor calidad
-                '--output', outputPath,
-                url
-            ]);
+            const tryClients = ['web', 'web_creator', 'ios', 'android', 'tv_embedded'];
+            const tryOptions = [
+                { forceIPv4: true, forceFormat140: false },
+                { forceIPv4: false, forceFormat140: false },
+                { forceIPv4: false, forceFormat140: true }
+            ];
 
-            console.log(`Ejecutando: ${this.ytdlpPath} ${args.join(' ')}`);
-
-            const process = spawn(this.ytdlpPath, args);
-
-            let stderr = '';
-            let progressData = '';
-
-            process.stdout.on('data', (data) => {
-                const output = data.toString();
-                console.log('stdout:', output);
-                
-                // Extraer progreso si hay callback
-                if (onProgress && output.includes('%')) {
-                    const match = output.match(/(\d+(?:\.\d+)?)%/);
-                    if (match) {
-                        const percent = parseFloat(match[1]);
-                        onProgress({ percent });
-                    }
+            const runAttempt = (clientIdx = 0, optIdx = 0) => {
+                if (clientIdx >= tryClients.length) {
+                    return reject(new Error('No se pudo descargar el audio tras múltiples intentos'));
                 }
-            });
+                const client = tryClients[clientIdx];
+                const opts = tryOptions[optIdx] || tryOptions[tryOptions.length - 1];
 
-            process.stderr.on('data', (data) => {
-                stderr += data.toString();
-                const output = data.toString();
-                console.log('stderr:', output);
-                
-                // Extraer progreso del stderr también
-                if (onProgress && output.includes('%')) {
-                    const match = output.match(/(\d+(?:\.\d+)?)%/);
-                    if (match) {
-                        const percent = parseFloat(match[1]);
-                        onProgress({ percent });
-                    }
+                const baseArgs = [
+                    '--extract-audio',
+                    '--audio-format', 'mp3',
+                    '--audio-quality', '0',
+                ];
+                if (opts.forceFormat140) {
+                    baseArgs.unshift('--format', '140'); // forzar m4a si es necesario
                 }
-            });
+                const args = this.buildArgs([
+                    ...baseArgs,
+                    '--output', outputPath,
+                    url
+                ], client, { forceIPv4: opts.forceIPv4 });
 
-            process.on('close', (code) => {
-                if (code === 0) {
-                    console.log('Descarga de audio completada exitosamente');
-                    resolve(outputPath);
-                } else {
+                console.log(`Ejecutando: ${this.ytdlpPath} ${args.join(' ')}`);
+
+                const proc = spawn(this.ytdlpPath, args);
+                let stderr = '';
+
+                proc.stdout.on('data', (data) => {
+                    const output = data.toString();
+                    console.log('stdout:', output);
+                    if (onProgress && output.includes('%')) {
+                        const match = output.match(/(\d+(?:\.\d+)?)%/);
+                        if (match) onProgress({ percent: parseFloat(match[1]) });
+                    }
+                });
+
+                proc.stderr.on('data', (data) => {
+                    const output = data.toString();
+                    stderr += output;
+                    console.log('stderr:', output);
+                    if (onProgress && output.includes('%')) {
+                        const match = output.match(/(\d+(?:\.\d+)?)%/);
+                        if (match) onProgress({ percent: parseFloat(match[1]) });
+                    }
+                });
+
+                proc.on('close', (code) => {
+                    if (code === 0) {
+                        console.log('Descarga de audio completada exitosamente');
+                        return resolve(outputPath);
+                    }
+                    const s = stderr.toLowerCase();
+                    const shouldRetry = s.includes('http error 403') || s.includes('forbidden') || s.includes('nsig') || s.includes('requested format is not available') || s.includes('sabr');
+                    if (shouldRetry) {
+                        const nextOptIdx = optIdx + 1;
+                        if (nextOptIdx < tryOptions.length) {
+                            return runAttempt(clientIdx, nextOptIdx);
+                        }
+                        return runAttempt(clientIdx + 1, 0);
+                    }
                     console.error('Error en descarga de audio:', stderr);
                     reject(new Error(`yt-dlp falló con código ${code}: ${stderr}`));
-                }
-            });
+                });
 
-            process.on('error', (error) => {
-                console.error('Error ejecutando yt-dlp:', error);
-                reject(error);
-            });
+                proc.on('error', (error) => {
+                    console.error('Error ejecutando yt-dlp:', error);
+                    reject(error);
+                });
+            };
+
+            runAttempt(0, 0);
         });
     }
 
