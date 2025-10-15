@@ -3,6 +3,7 @@ const router = express.Router();
 const youtubesearchapi = require('youtube-search-api');
 const path = require('path');
 const fs = require('fs-extra');
+const { spawn } = require('child_process');
 const ytdlp = require('../utils/ytdlp');
 
 // Endpoint para buscar videos
@@ -272,7 +273,44 @@ router.get('/download/video/:videoId', async (req, res) => {
         }
       });
     } else {
-      throw new Error('El archivo no se creó correctamente');
+      // Intentar remux si yt-dlp dejó otro contenedor (webm/mkv)
+      const altExtensions = ['.webm', '.mkv'];
+      let remuxed = false;
+      for (const ext of altExtensions) {
+        const altPath = path.join(__dirname, '../../downloads/video', `${safeTitle}${ext}`);
+        if (await fs.pathExists(altPath)) {
+          console.log(`Intentando remux de ${ext} a mp4: ${altPath} -> ${finalVideoPath}`);
+          await new Promise((resolve, reject) => {
+            const ff = spawn('ffmpeg', ['-y', '-i', altPath, '-c', 'copy', finalVideoPath]);
+            let stderr = '';
+            ff.stderr.on('data', d => { stderr += d.toString(); });
+            ff.on('close', async (code) => {
+              if (code === 0) {
+                try { await fs.unlink(altPath); } catch (_) {}
+                console.log('Remux completado exitosamente');
+                resolve();
+              } else {
+                console.error('Error en remux ffmpeg:', stderr);
+                reject(new Error('ffmpeg remux failed'));
+              }
+            });
+            ff.on('error', (e) => reject(e));
+          });
+          remuxed = await fs.pathExists(finalVideoPath);
+          if (remuxed) break;
+        }
+      }
+
+      if (remuxed && await fs.pathExists(finalVideoPath)) {
+        ytdlp.cleanupFile(finalVideoPath, 600000);
+        res.download(finalVideoPath, `${safeTitle}.mp4`, (err) => {
+          if (err) {
+            console.error('Error enviando archivo tras remux:', err);
+          }
+        });
+      } else {
+        throw new Error('El archivo no se creó correctamente');
+      }
     }
 
   } catch (error) {

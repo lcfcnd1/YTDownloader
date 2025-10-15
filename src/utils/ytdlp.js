@@ -137,38 +137,11 @@ class YtDlpHelper {
      */
     async downloadVideoDynamic(url, outputPath, preferredQuality = '1080p', onProgress = null) {
         try {
-            // Primero obtener formatos disponibles
-            console.log('🔍 Consultando formatos disponibles...');
-            const formats = await this.getAvailableFormats(url);
-            
-            if (formats.length === 0) {
-                throw new Error('No se encontraron formatos de video disponibles');
-            }
-            
-            // Separar formatos con y sin audio
-            const formatsWithAudio = formats.filter(f => f.isCombined || f.hasAudio);
-            const formatsVideoOnly = formats.filter(f => f.isVideoOnly);
-            
-            // Si hay formatos con audio, usar uno de esos
-            if (formatsWithAudio.length > 0) {
-                console.log('🎵 Usando formato con audio...');
-                const selectedFormatId = this.selectBestFormat(formatsWithAudio, preferredQuality);
-                return await this.downloadVideo(url, outputPath, selectedFormatId, onProgress);
-            }
-            
-            // Si solo hay formatos de video sin audio, combinar con audio
-            if (formatsVideoOnly.length > 0) {
-                console.log('🎬 Combinando video y audio por separado...');
-                return await this.downloadVideoWithSeparateAudio(url, outputPath, preferredQuality, onProgress);
-            }
-            
-            // Fallback
-            console.log('⚠️ Usando formato por defecto...');
-            return await this.downloadVideo(url, outputPath, 'best', onProgress);
-            
+            // Siempre combinar mejor video + mejor audio y remux a MP4
+            console.log('🎬 Forzando combinación bestvideo+bestaudio (MP4)...');
+            return await this.downloadVideoWithSeparateAudio(url, outputPath, preferredQuality, onProgress);
         } catch (error) {
-            console.log('⚠️ Error con formato dinámico, usando fallback...');
-            // Fallback a formato por defecto si falla la selección dinámica
+            console.log('⚠️ Error combinando video/audio, usando fallback a best...');
             return await this.downloadVideo(url, outputPath, 'best', onProgress);
         }
     }
