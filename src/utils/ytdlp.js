@@ -8,6 +8,11 @@ const execAsync = promisify(exec);
 class YtDlpHelper {
     constructor() {
         this.ytdlpPath = 'yt-dlp'; // Asumimos que yt-dlp está en PATH
+        this.userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+        this.defaultArgs = [
+            '-4',
+            '--user-agent', this.userAgent
+        ];
     }
 
     /**
@@ -27,7 +32,7 @@ class YtDlpHelper {
      */
     async getVideoInfo(url) {
         try {
-            const command = `${this.ytdlpPath} --dump-json --no-download "${url}"`;
+            const command = `${this.ytdlpPath} -4 --user-agent "${this.userAgent}" --dump-json --no-download "${url}"`;
             const { stdout } = await execAsync(command);
             
             const info = JSON.parse(stdout);
@@ -52,7 +57,7 @@ class YtDlpHelper {
      */
     async getTitle(url) {
         try {
-            const command = `${this.ytdlpPath} --get-title --no-download "${url}"`;
+            const command = `${this.ytdlpPath} -4 --user-agent "${this.userAgent}" --get-title --no-download "${url}"`;
             const { stdout } = await execAsync(command);
             return stdout.trim();
         } catch (error) {
@@ -66,6 +71,7 @@ class YtDlpHelper {
     async downloadAudio(url, outputPath, onProgress = null) {
         return new Promise((resolve, reject) => {
             const args = [
+                ...this.defaultArgs,
                 '--extract-audio',
                 '--audio-format', 'mp3',
                 '--audio-quality', '0', // Mejor calidad
@@ -176,6 +182,7 @@ class YtDlpHelper {
             const formatString = `bestvideo[height<=${preferredQuality.replace('p', '')}]+bestaudio/best[height<=${preferredQuality.replace('p', '')}]/best`;
             
             const args = [
+                ...this.defaultArgs,
                 '--format', formatString,
                 '--merge-output-format', 'mp4',
                 '--output', outputPath,
@@ -240,6 +247,7 @@ class YtDlpHelper {
     async downloadVideo(url, outputPath, formatId = 'best', onProgress = null) {
         return new Promise((resolve, reject) => {
             const args = [
+                ...this.defaultArgs,
                 '--format', formatId,
                 '--merge-output-format', 'mp4',
                 '--output', outputPath,
@@ -303,7 +311,7 @@ class YtDlpHelper {
      */
     async getAvailableFormats(url) {
         try {
-            const command = `${this.ytdlpPath} --list-formats --no-download "${url}"`;
+            const command = `${this.ytdlpPath} -4 --user-agent "${this.userAgent}" --list-formats --no-download "${url}"`;
             const { stdout } = await execAsync(command);
             
             // Parsear formatos del output
@@ -462,7 +470,7 @@ class YtDlpHelper {
      */
     async getThumbnails(url) {
         try {
-            const command = `${this.ytdlpPath} --list-thumbnails --no-download "${url}"`;
+            const command = `${this.ytdlpPath} -4 --user-agent "${this.userAgent}" --list-thumbnails --no-download "${url}"`;
             const { stdout } = await execAsync(command);
             
             // Parsear thumbnails del output
