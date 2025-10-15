@@ -19,7 +19,7 @@ class YtDlpHelper {
             '--geo-bypass',
             '--retries', '10',
             '--fragment-retries', '10',
-            '--retry-sleep', '1,5,20'
+            '--sleep-requests', '1'
         ];
     }
 
