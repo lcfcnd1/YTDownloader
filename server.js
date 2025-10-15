@@ -12,8 +12,6 @@ const webRoutes = require('./src/routes/web');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-
-
 // Middleware de seguridad
 app.use(helmet({
   contentSecurityPolicy: false // Permitir recursos inline para la interfaz
@@ -57,7 +55,7 @@ app.get(`/health`, (req, res) => {
     message: 'YTDownloader server funcionando correctamente',
     timestamp: new Date().toISOString(),
     uptime: process.uptime(),
-    basePath: BASE_PATH
+    basePath: '/'
   });
 });
 

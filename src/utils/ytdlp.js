@@ -8,6 +8,23 @@ const execAsync = promisify(exec);
 class YtDlpHelper {
     constructor() {
         this.ytdlpPath = 'yt-dlp'; // Asumimos que yt-dlp está en PATH
+        // Args comunes para mitigar 403/throttling y cambios de firma (nsig)
+        this.commonArgs = [
+            '--force-ipv4',
+            '--extractor-args', 'youtube:player_client=android',
+            '--user-agent', 'Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Mobile Safari/537.36',
+            '--add-header', 'Accept-Language:es-ES,es;q=0.9,en;q=0.8',
+            '--add-header', 'Referer:https://www.youtube.com',
+            '--add-header', 'Origin:https://www.youtube.com',
+            '--geo-bypass',
+            '--retries', '10',
+            '--fragment-retries', '10',
+            '--retry-sleep', '1,5,20'
+        ];
+    }
+
+    buildArgs(extraArgs = []) {
+        return [...this.commonArgs, ...extraArgs];
     }
 
     /**
@@ -27,7 +44,8 @@ class YtDlpHelper {
      */
     async getVideoInfo(url) {
         try {
-            const command = `${this.ytdlpPath} --dump-json --no-download "${url}"`;
+            const args = this.buildArgs(['--dump-json', '--no-download', url]);
+            const command = `${this.ytdlpPath} ${args.map(a => (a.includes(' ') ? `"${a}"` : a)).join(' ')}`;
             const { stdout } = await execAsync(command);
             
             const info = JSON.parse(stdout);
@@ -52,7 +70,8 @@ class YtDlpHelper {
      */
     async getTitle(url) {
         try {
-            const command = `${this.ytdlpPath} --get-title --no-download "${url}"`;
+            const args = this.buildArgs(['--get-title', '--no-download', url]);
+            const command = `${this.ytdlpPath} ${args.map(a => (a.includes(' ') ? `"${a}"` : a)).join(' ')}`;
             const { stdout } = await execAsync(command);
             return stdout.trim();
         } catch (error) {
@@ -65,13 +84,13 @@ class YtDlpHelper {
      */
     async downloadAudio(url, outputPath, onProgress = null) {
         return new Promise((resolve, reject) => {
-            const args = [
+            const args = this.buildArgs([
                 '--extract-audio',
                 '--audio-format', 'mp3',
                 '--audio-quality', '0', // Mejor calidad
                 '--output', outputPath,
                 url
-            ];
+            ]);
 
             console.log(`Ejecutando: ${this.ytdlpPath} ${args.join(' ')}`);
 
@@ -175,12 +194,12 @@ class YtDlpHelper {
             // Usar formato que combine automáticamente el mejor video con el mejor audio
             const formatString = `bestvideo[height<=${preferredQuality.replace('p', '')}]+bestaudio/best[height<=${preferredQuality.replace('p', '')}]/best`;
             
-            const args = [
+            const args = this.buildArgs([
                 '--format', formatString,
                 '--merge-output-format', 'mp4',
                 '--output', outputPath,
                 url
-            ];
+            ]);
 
             console.log(`Ejecutando combinación: ${this.ytdlpPath} ${args.join(' ')}`);
 
@@ -239,12 +258,12 @@ class YtDlpHelper {
      */
     async downloadVideo(url, outputPath, formatId = 'best', onProgress = null) {
         return new Promise((resolve, reject) => {
-            const args = [
+            const args = this.buildArgs([
                 '--format', formatId,
                 '--merge-output-format', 'mp4',
                 '--output', outputPath,
                 url
-            ];
+            ]);
 
             console.log(`Ejecutando: ${this.ytdlpPath} ${args.join(' ')}`);
 

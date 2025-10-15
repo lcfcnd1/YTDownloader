@@ -191,6 +191,7 @@ router.get('/download/audio/:videoId', async (req, res) => {
     
     // Mensajes de error más específicos
     let errorMessage = 'No se pudo descargar el audio del video';
+    const raw = String(error?.message || '').toLowerCase();
     if (error.message.includes('Video unavailable')) {
       errorMessage = 'El video no está disponible o es privado.';
     } else if (error.message.includes('Sign in to confirm your age')) {
@@ -199,6 +200,10 @@ router.get('/download/audio/:videoId', async (req, res) => {
       errorMessage = 'El video es privado y no se puede descargar.';
     } else if (error.message.includes('This video is not available')) {
       errorMessage = 'Este video no está disponible en tu región.';
+    } else if (raw.includes('http error 403') || raw.includes('forbidden')) {
+      errorMessage = 'YouTube devolvió 403/Forbidden. Intenta nuevamente en unos minutos.';
+    } else if (raw.includes('nsig') || raw.includes('signature') || raw.includes('throttling')) {
+      errorMessage = 'YouTube está limitando la descarga (nsig/throttling). Reintenta.';
     }
     
     res.status(500).json({
@@ -280,6 +285,7 @@ router.get('/download/video/:videoId', async (req, res) => {
     
     // Mensajes de error más específicos
     let errorMessage = 'No se pudo descargar el video';
+    const raw = String(error?.message || '').toLowerCase();
     if (error.message.includes('Video unavailable')) {
       errorMessage = 'El video no está disponible o es privado.';
     } else if (error.message.includes('Sign in to confirm your age')) {
@@ -288,6 +294,10 @@ router.get('/download/video/:videoId', async (req, res) => {
       errorMessage = 'El video es privado y no se puede descargar.';
     } else if (error.message.includes('This video is not available')) {
       errorMessage = 'Este video no está disponible en tu región.';
+    } else if (raw.includes('http error 403') || raw.includes('forbidden')) {
+      errorMessage = 'YouTube devolvió 403/Forbidden. Intenta nuevamente en unos minutos.';
+    } else if (raw.includes('nsig') || raw.includes('signature') || raw.includes('throttling')) {
+      errorMessage = 'YouTube está limitando la descarga (nsig/throttling). Reintenta.';
     }
     
     res.status(500).json({
