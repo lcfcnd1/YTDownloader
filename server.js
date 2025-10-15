@@ -12,8 +12,7 @@ const webRoutes = require('./src/routes/web');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Configurar prefijo base para rutas (para subcarpetas en Nginx)
-const BASE_PATH = process.env.BASE_PATH || '';
+
 
 // Middleware de seguridad
 app.use(helmet({
@@ -31,7 +30,7 @@ app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
 // Servir archivos estáticos
-app.use(`${BASE_PATH}/static`, express.static(path.join(__dirname, 'public')));
+app.use(`/static`, express.static(path.join(__dirname, 'public')));
 
 // Crear carpetas necesarias
 const createDirectories = async () => {
@@ -48,11 +47,11 @@ const createDirectories = async () => {
 };
 
 // Rutas
-app.use(`${BASE_PATH}/api`, apiRoutes);
-app.use(`${BASE_PATH}/`, webRoutes);
+app.use(`/api`, apiRoutes);
+app.use(`/`, webRoutes);
 
 // Endpoint de prueba
-app.get(`${BASE_PATH}/health`, (req, res) => {
+app.get(`/health`, (req, res) => {
   res.json({
     status: 'OK',
     message: 'YTDownloader server funcionando correctamente',
