@@ -1,7 +1,10 @@
 #!/bin/bash
 
-# YTDownloader - Script de inicio para producción
-# Configura automáticamente Nginx y levanta la app Node.js con PM2
+# =========================
+# YTDownloader - Script de gestión de la app Node.js
+# Soporta start | stop | restart | status | logs
+# Configura Nginx automáticamente con certificado existente
+# =========================
 
 set -e
 
@@ -20,6 +23,9 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m'
 
+# =========================
+# Funciones de log
+# =========================
 print_message() { echo -e "${GREEN}[YTDownloader]${NC} $1"; }
 print_warning() { echo -e "${YELLOW}[WARNING]${NC} $1"; }
 print_error() { echo -e "${RED}[ERROR]${NC} $1"; }
@@ -32,7 +38,7 @@ command_exists() { command -v "$1" >/dev/null 2>&1; }
 # =========================
 check_nodejs() {
     if ! command_exists node; then
-        print_error "Node.js no está instalado. Instala Node.js antes de continuar."
+        print_error "Node.js no instalado"
         exit 1
     fi
     print_message "Node.js: $(node -v)"
@@ -48,9 +54,8 @@ check_pm2() {
 
 check_nginx() {
     if ! command_exists nginx; then
-        print_info "Instalando Nginx..."
-        sudo apt-get update
-        sudo apt-get install -y nginx
+        print_error "Nginx no instalado"
+        exit 1
     fi
     print_message "Nginx: $(nginx -v 2>&1)"
 }
@@ -59,18 +64,18 @@ check_nginx() {
 # 2️⃣ Crear directorios
 # =========================
 create_directories() {
-    print_info "Creando directorios..."
     mkdir -p logs downloads/audio downloads/video public
-    print_message "Directorios creados"
+    print_message "Directorios creados/verificados"
 }
 
 # =========================
 # 3️⃣ Instalar dependencias Node
 # =========================
 install_dependencies() {
-    print_info "Instalando dependencias Node.js..."
-    npm install --production
-    print_message "Dependencias instaladas"
+    if [ -f "package.json" ]; then
+        npm install --production
+        print_message "Dependencias Node.js instaladas"
+    fi
 }
 
 # =========================
@@ -80,14 +85,13 @@ create_nginx_config() {
     local nginx_config_file="$NGINX_SITES_AVAILABLE/$APP_NAME"
     local enabled_link="$NGINX_SITES_ENABLED/$APP_NAME"
 
-    if [ ! -f "$nginx_config_file" ]; then
-        sudo tee "$nginx_config_file" > /dev/null <<EOF
+    # Crear configuración
+    sudo tee "$nginx_config_file" > /dev/null <<EOF
 server {
     listen 80;
     listen 443 ssl;
     server_name $DOMAIN;
 
-    # SSL certificado existente
     ssl_certificate /etc/letsencrypt/live/$DOMAIN/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/$DOMAIN/privkey.pem;
 
@@ -95,9 +99,8 @@ server {
     proxy_buffering off;
     proxy_request_buffering off;
 
-    # Proxy a la app Node.js
     location $BASE_PATH/ {
-        proxy_pass http://127.0.0.1:$APP_PORT;
+        proxy_pass http://127.0.0.1:$APP_PORT/;
         proxy_http_version 1.1;
         proxy_set_header Upgrade \$http_upgrade;
         proxy_set_header Connection 'upgrade';
@@ -107,24 +110,18 @@ server {
         proxy_set_header X-Forwarded-Proto \$scheme;
     }
 
-    # Archivos estáticos
     location $BASE_PATH/static/ {
         alias $PROJECT_DIR/public/;
         expires 1y;
         add_header Cache-Control "public, immutable";
     }
 
-    # Health check
     location $BASE_PATH/health {
         proxy_pass http://127.0.0.1:$APP_PORT/health;
         access_log off;
     }
 }
 EOF
-        print_message "Configuración Nginx creada"
-    else
-        print_warning "Configuración Nginx ya existe"
-    fi
 
     # Habilitar sitio
     if [ ! -L "$enabled_link" ]; then
@@ -138,33 +135,65 @@ EOF
 }
 
 # =========================
-# 5️⃣ Iniciar aplicación
+# 5️⃣ Gestión de la app
 # =========================
-start_application() {
-    print_info "Deteniendo app existente si existe..."
+start_app() {
+    print_info "Deteniendo app si existiera..."
     pm2 delete $APP_NAME 2>/dev/null || true
 
-    print_info "Iniciando app en modo producción con BASE_PATH=$BASE_PATH..."
+    print_info "Iniciando app con BASE_PATH=$BASE_PATH..."
+    export BASE_PATH=$BASE_PATH
     pm2 start ecosystem.config.js --env production
     pm2 save
+}
+
+stop_app() {
+    print_info "Deteniendo app..."
+    pm2 stop $APP_NAME 2>/dev/null || true
+    pm2 delete $APP_NAME 2>/dev/null || true
+    print_message "App detenida"
+}
+
+restart_app() {
+    stop_app
+    start_app
+}
+
+status_app() {
+    pm2 status $APP_NAME
+}
+
+logs_app() {
+    pm2 logs $APP_NAME
 }
 
 # =========================
 # 6️⃣ Main
 # =========================
-main() {
-    print_message "🚀 Iniciando $APP_NAME..."
-    check_nodejs
-    check_pm2
-    check_nginx
-    create_directories
-    install_dependencies
-    create_nginx_config
-    start_application
-    print_message "✅ $APP_NAME iniciado en https://$DOMAIN$BASE_PATH"
-}
-
-# =========================
-# Ejecutar
-# =========================
-main
+case "$1" in
+    start|"")
+        check_nodejs
+        check_pm2
+        check_nginx
+        create_directories
+        install_dependencies
+        create_nginx_config
+        start_app
+        ;;
+    stop)
+        stop_app
+        ;;
+    restart)
+        restart_app
+        ;;
+    status)
+        status_app
+        ;;
+    logs)
+        logs_app
+        ;;
+    *)
+        echo "Uso: $0 [start|stop|restart|status|logs]"
+        exit 1
+        ;;
+esac
