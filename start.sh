@@ -1,24 +1,16 @@
 #!/bin/bash
 
-<<<<<<< HEAD
-=======
-# YTDownloader - Script de inicio para producción
-# Configura automáticamente Nginx y levanta la app Node.js con PM2
-
 set -e
 
->>>>>>> parent of 59f1334 (Update start.sh)
 APP_NAME="yt-downloader"
 APP_PORT=3000
 DOMAIN="sqsoft.top"
 PROJECT_DIR=$(pwd)
+BASE_PATH="/ytdownloader"
 
 NGINX_SITES_AVAILABLE="/etc/nginx/sites-available"
 NGINX_SITES_ENABLED="/etc/nginx/sites-enabled"
 
-<<<<<<< HEAD
-print_message() { echo -e "\033[0;32m[YTDownloader]\033[0m $1"; }
-=======
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -29,74 +21,57 @@ print_message() { echo -e "${GREEN}[YTDownloader]${NC} $1"; }
 print_warning() { echo -e "${YELLOW}[WARNING]${NC} $1"; }
 print_error() { echo -e "${RED}[ERROR]${NC} $1"; }
 print_info() { echo -e "${BLUE}[INFO]${NC} $1"; }
->>>>>>> parent of 59f1334 (Update start.sh)
 
 command_exists() { command -v "$1" >/dev/null 2>&1; }
 
 check_nodejs() {
     if ! command_exists node; then
-<<<<<<< HEAD
-        echo "Node.js no instalado"; exit 1
-=======
-        print_error "Node.js no está instalado. Instala Node.js antes de continuar."
+        print_error "Node.js no instalado"
         exit 1
->>>>>>> parent of 59f1334 (Update start.sh)
     fi
+    print_message "Node.js: $(node -v)"
 }
 
 check_pm2() {
     if ! command_exists pm2; then
-        npm install -g pm2
+        print_info "Instalando PM2..."
+        sudo npm install -g pm2
     fi
+    print_message "PM2: $(pm2 -v)"
 }
 
 check_nginx() {
     if ! command_exists nginx; then
-<<<<<<< HEAD
-        apt-get update && apt-get install -y nginx
-=======
         print_info "Instalando Nginx..."
         sudo apt-get update
         sudo apt-get install -y nginx
->>>>>>> parent of 59f1334 (Update start.sh)
     fi
+    print_message "Nginx: $(nginx -v 2>&1)"
 }
 
 create_directories() {
-    print_info "Creando directorios..."
     mkdir -p logs downloads/audio downloads/video public
-<<<<<<< HEAD
-=======
-    print_message "Directorios creados"
->>>>>>> parent of 59f1334 (Update start.sh)
+    print_message "Directorios creados/verificados"
 }
 
 install_dependencies() {
-<<<<<<< HEAD
-    npm install --production
-=======
-    print_info "Instalando dependencias Node.js..."
-    npm install --production
-    print_message "Dependencias instaladas"
->>>>>>> parent of 59f1334 (Update start.sh)
+    if [ -f "package.json" ]; then
+        npm install --production
+        print_message "Dependencias Node.js instaladas"
+    fi
 }
 
 create_nginx_config() {
     local nginx_config_file="$NGINX_SITES_AVAILABLE/$APP_NAME"
     local enabled_link="$NGINX_SITES_ENABLED/$APP_NAME"
 
-<<<<<<< HEAD
-    sudo tee "$nginx_config_file" > /dev/null <<EOF
-=======
     if [ ! -f "$nginx_config_file" ]; then
         sudo tee "$nginx_config_file" > /dev/null <<EOF
->>>>>>> parent of 59f1334 (Update start.sh)
 server {
     listen 80;
     listen 443 ssl;
     server_name $DOMAIN;
 
-    # SSL certificado existente
     ssl_certificate /etc/letsencrypt/live/$DOMAIN/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/$DOMAIN/privkey.pem;
 
@@ -104,14 +79,9 @@ server {
     proxy_buffering off;
     proxy_request_buffering off;
 
-<<<<<<< HEAD
-    location /ytdownloader/ {
-        proxy_pass http://127.0.0.1:$APP_PORT/;
-=======
-    # Proxy a la app Node.js
+    # Proxy a la app Node.js bajo el prefijo público
     location $BASE_PATH/ {
-        proxy_pass http://127.0.0.1:$APP_PORT;
->>>>>>> parent of 59f1334 (Update start.sh)
+        proxy_pass http://127.0.0.1:$APP_PORT/;
         proxy_http_version 1.1;
         proxy_set_header Upgrade \$http_upgrade;
         proxy_set_header Connection 'upgrade';
@@ -121,23 +91,15 @@ server {
         proxy_set_header X-Forwarded-Proto \$scheme;
     }
 
-<<<<<<< HEAD
-    location /ytdownloader/static/ {
-=======
-    # Archivos estáticos
+    # Archivos estáticos servidos directamente
     location $BASE_PATH/static/ {
->>>>>>> parent of 59f1334 (Update start.sh)
         alias $PROJECT_DIR/public/;
         expires 1y;
         add_header Cache-Control "public, immutable";
     }
 
-<<<<<<< HEAD
-    location /ytdownloader/health {
-=======
     # Health check
     location $BASE_PATH/health {
->>>>>>> parent of 59f1334 (Update start.sh)
         proxy_pass http://127.0.0.1:$APP_PORT/health;
         access_log off;
     }
@@ -148,60 +110,68 @@ EOF
         print_warning "Configuración Nginx ya existe"
     fi
 
-    [ ! -L "$enabled_link" ] && sudo ln -s "$nginx_config_file" "$enabled_link"
+    if [ ! -L "$enabled_link" ]; then
+        sudo ln -s "$nginx_config_file" "$enabled_link"
+    fi
 
     sudo nginx -t
     sudo systemctl reload nginx
     print_message "Nginx recargado"
 }
 
-<<<<<<< HEAD
-stop_application() {
-=======
-# =========================
-# 5️⃣ Iniciar aplicación
-# =========================
-start_application() {
-    print_info "Deteniendo app existente si existe..."
->>>>>>> parent of 59f1334 (Update start.sh)
+start_app() {
+    print_info "Deteniendo app si existiera..."
     pm2 delete $APP_NAME 2>/dev/null || true
-}
-
-<<<<<<< HEAD
-start_application() {
-    stop_application
-=======
-    print_info "Iniciando app en modo producción con BASE_PATH=$BASE_PATH..."
->>>>>>> parent of 59f1334 (Update start.sh)
+    print_info "Iniciando app en modo producción..."
     pm2 start ecosystem.config.js --env production
     pm2 save
 }
 
-<<<<<<< HEAD
-=======
-# =========================
-# 6️⃣ Main
-# =========================
->>>>>>> parent of 59f1334 (Update start.sh)
-main() {
-    print_message "🚀 Iniciando $APP_NAME..."
-    check_nodejs
-    check_pm2
-    check_nginx
-    create_directories
-    install_dependencies
-    create_nginx_config
-    start_application
-<<<<<<< HEAD
-    print_message "✅ $APP_NAME iniciado en https://$DOMAIN/ytdownloader"
+stop_app() {
+    print_info "Deteniendo app..."
+    pm2 stop $APP_NAME 2>/dev/null || true
+    pm2 delete $APP_NAME 2>/dev/null || true
+    print_message "App detenida"
 }
 
-=======
-    print_message "✅ $APP_NAME iniciado en https://$DOMAIN$BASE_PATH"
+restart_app() {
+    stop_app
+    start_app
 }
 
-# =========================
-# Ejecutar
-# =========================
->>>>>>> parent of 59f1334 (Update start.sh)
-main
+status_app() {
+    pm2 status $APP_NAME
+}
+
+logs_app() {
+    pm2 logs $APP_NAME
+}
+
+case "$1" in
+    start|"")
+        check_nodejs
+        check_pm2
+        check_nginx
+        create_directories
+        install_dependencies
+        create_nginx_config
+        start_app
+        print_message "✅ $APP_NAME disponible en https://$DOMAIN$BASE_PATH"
+        ;;
+    stop)
+        stop_app
+        ;;
+    restart)
+        restart_app
+        ;;
+    status)
+        status_app
+        ;;
+    logs)
+        logs_app
+        ;;
+    *)
+        echo "Uso: $0 [start|stop|restart|status|logs]"
+        exit 1
+        ;;
+esac

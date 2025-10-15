@@ -8,29 +8,6 @@ const execAsync = promisify(exec);
 class YtDlpHelper {
     constructor() {
         this.ytdlpPath = 'yt-dlp'; // Asumimos que yt-dlp está en PATH
-        // Args comunes para mitigar 403/throttling y cambios de firma (nsig)
-        this.defaultClient = 'web';
-        this.forceIPv4 = true;
-    }
-
-    getCommonArgs(client = this.defaultClient, opts = { forceIPv4: this.forceIPv4 }) {
-        const args = [
-            '--extractor-args', `youtube:player_client=${client}`,
-            '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            '--add-header', 'Accept-Language:es-ES,es;q=0.9,en;q=0.8',
-            '--add-header', 'Referer:https://www.youtube.com',
-            '--add-header', 'Origin:https://www.youtube.com',
-            '--geo-bypass',
-            '--retries', '10',
-            '--fragment-retries', '10',
-            '--sleep-requests', '1'
-        ];
-        if (opts.forceIPv4) args.unshift('--force-ipv4');
-        return args;
-    }
-
-    buildArgs(extraArgs = [], client = this.defaultClient, opts) {
-        return [...this.getCommonArgs(client, opts || { forceIPv4: this.forceIPv4 }), ...extraArgs];
     }
 
     /**
@@ -50,8 +27,7 @@ class YtDlpHelper {
      */
     async getVideoInfo(url) {
         try {
-            const args = this.buildArgs(['--dump-json', '--no-download', url]);
-            const command = `${this.ytdlpPath} ${args.map(a => (a.includes(' ') ? `"${a}"` : a)).join(' ')}`;
+            const command = `${this.ytdlpPath} --dump-json --no-download "${url}"`;
             const { stdout } = await execAsync(command);
             
             const info = JSON.parse(stdout);
@@ -76,8 +52,7 @@ class YtDlpHelper {
      */
     async getTitle(url) {
         try {
-            const args = this.buildArgs(['--get-title', '--no-download', url]);
-            const command = `${this.ytdlpPath} ${args.map(a => (a.includes(' ') ? `"${a}"` : a)).join(' ')}`;
+            const command = `${this.ytdlpPath} --get-title --no-download "${url}"`;
             const { stdout } = await execAsync(command);
             return stdout.trim();
         } catch (error) {
@@ -90,83 +65,64 @@ class YtDlpHelper {
      */
     async downloadAudio(url, outputPath, onProgress = null) {
         return new Promise((resolve, reject) => {
-            const tryClients = ['web', 'web_creator', 'ios', 'android', 'tv_embedded'];
-            const tryOptions = [
-                { forceIPv4: true, forceFormat140: false },
-                { forceIPv4: false, forceFormat140: false },
-                { forceIPv4: false, forceFormat140: true }
+            const args = [
+                '--extract-audio',
+                '--audio-format', 'mp3',
+                '--audio-quality', '0', // Mejor calidad
+                '--output', outputPath,
+                url
             ];
 
-            const runAttempt = (clientIdx = 0, optIdx = 0) => {
-                if (clientIdx >= tryClients.length) {
-                    return reject(new Error('No se pudo descargar el audio tras múltiples intentos'));
+            console.log(`Ejecutando: ${this.ytdlpPath} ${args.join(' ')}`);
+
+            const process = spawn(this.ytdlpPath, args);
+
+            let stderr = '';
+            let progressData = '';
+
+            process.stdout.on('data', (data) => {
+                const output = data.toString();
+                console.log('stdout:', output);
+                
+                // Extraer progreso si hay callback
+                if (onProgress && output.includes('%')) {
+                    const match = output.match(/(\d+(?:\.\d+)?)%/);
+                    if (match) {
+                        const percent = parseFloat(match[1]);
+                        onProgress({ percent });
+                    }
                 }
-                const client = tryClients[clientIdx];
-                const opts = tryOptions[optIdx] || tryOptions[tryOptions.length - 1];
+            });
 
-                const baseArgs = [
-                    '--extract-audio',
-                    '--audio-format', 'mp3',
-                    '--audio-quality', '0',
-                ];
-                if (opts.forceFormat140) {
-                    baseArgs.unshift('--format', '140'); // forzar m4a si es necesario
+            process.stderr.on('data', (data) => {
+                stderr += data.toString();
+                const output = data.toString();
+                console.log('stderr:', output);
+                
+                // Extraer progreso del stderr también
+                if (onProgress && output.includes('%')) {
+                    const match = output.match(/(\d+(?:\.\d+)?)%/);
+                    if (match) {
+                        const percent = parseFloat(match[1]);
+                        onProgress({ percent });
+                    }
                 }
-                const args = this.buildArgs([
-                    ...baseArgs,
-                    '--output', outputPath,
-                    url
-                ], client, { forceIPv4: opts.forceIPv4 });
+            });
 
-                console.log(`Ejecutando: ${this.ytdlpPath} ${args.join(' ')}`);
-
-                const proc = spawn(this.ytdlpPath, args);
-                let stderr = '';
-
-                proc.stdout.on('data', (data) => {
-                    const output = data.toString();
-                    console.log('stdout:', output);
-                    if (onProgress && output.includes('%')) {
-                        const match = output.match(/(\d+(?:\.\d+)?)%/);
-                        if (match) onProgress({ percent: parseFloat(match[1]) });
-                    }
-                });
-
-                proc.stderr.on('data', (data) => {
-                    const output = data.toString();
-                    stderr += output;
-                    console.log('stderr:', output);
-                    if (onProgress && output.includes('%')) {
-                        const match = output.match(/(\d+(?:\.\d+)?)%/);
-                        if (match) onProgress({ percent: parseFloat(match[1]) });
-                    }
-                });
-
-                proc.on('close', (code) => {
-                    if (code === 0) {
-                        console.log('Descarga de audio completada exitosamente');
-                        return resolve(outputPath);
-                    }
-                    const s = stderr.toLowerCase();
-                    const shouldRetry = s.includes('http error 403') || s.includes('forbidden') || s.includes('nsig') || s.includes('requested format is not available') || s.includes('sabr');
-                    if (shouldRetry) {
-                        const nextOptIdx = optIdx + 1;
-                        if (nextOptIdx < tryOptions.length) {
-                            return runAttempt(clientIdx, nextOptIdx);
-                        }
-                        return runAttempt(clientIdx + 1, 0);
-                    }
+            process.on('close', (code) => {
+                if (code === 0) {
+                    console.log('Descarga de audio completada exitosamente');
+                    resolve(outputPath);
+                } else {
                     console.error('Error en descarga de audio:', stderr);
                     reject(new Error(`yt-dlp falló con código ${code}: ${stderr}`));
-                });
+                }
+            });
 
-                proc.on('error', (error) => {
-                    console.error('Error ejecutando yt-dlp:', error);
-                    reject(error);
-                });
-            };
-
-            runAttempt(0, 0);
+            process.on('error', (error) => {
+                console.error('Error ejecutando yt-dlp:', error);
+                reject(error);
+            });
         });
     }
 
@@ -219,12 +175,12 @@ class YtDlpHelper {
             // Usar formato que combine automáticamente el mejor video con el mejor audio
             const formatString = `bestvideo[height<=${preferredQuality.replace('p', '')}]+bestaudio/best[height<=${preferredQuality.replace('p', '')}]/best`;
             
-            const args = this.buildArgs([
+            const args = [
                 '--format', formatString,
                 '--merge-output-format', 'mp4',
                 '--output', outputPath,
                 url
-            ]);
+            ];
 
             console.log(`Ejecutando combinación: ${this.ytdlpPath} ${args.join(' ')}`);
 
@@ -283,12 +239,12 @@ class YtDlpHelper {
      */
     async downloadVideo(url, outputPath, formatId = 'best', onProgress = null) {
         return new Promise((resolve, reject) => {
-            const args = this.buildArgs([
+            const args = [
                 '--format', formatId,
                 '--merge-output-format', 'mp4',
                 '--output', outputPath,
                 url
-            ]);
+            ];
 
             console.log(`Ejecutando: ${this.ytdlpPath} ${args.join(' ')}`);
 

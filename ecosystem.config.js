@@ -9,12 +9,12 @@ module.exports = {
     env: {
       NODE_ENV: 'development',
       PORT: 3000,
-      BASE_PATH: '/ytdownloader'
+      
     },
     env_production: {
       NODE_ENV: 'production',
       PORT: 3000,
-      BASE_PATH: '/ytdownloader'
+      
     },
     // Configuración de logs
     log_file: './logs/combined.log',

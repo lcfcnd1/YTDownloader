@@ -11,7 +11,7 @@ const webRoutes = require('./src/routes/web');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-
+// Rutas servidas en raíz; Nginx se encarga del prefijo si corresponde
 // Middleware de seguridad
 app.use(helmet({
   contentSecurityPolicy: false // Permitir recursos inline para la interfaz
@@ -28,7 +28,7 @@ app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
 // Servir archivos estáticos
-app.use(`/static`, express.static(path.join(__dirname, 'public')));
+app.use('/static', express.static(path.join(__dirname, 'public')));
 
 // Crear carpetas necesarias
 const createDirectories = async () => {
@@ -45,11 +45,11 @@ const createDirectories = async () => {
 };
 
 // Rutas
-app.use(`/api`, apiRoutes);
-app.use(`/`, webRoutes);
+app.use('/api', apiRoutes);
+app.use('/', webRoutes);
 
 // Endpoint de prueba
-app.get(`/health`, (req, res) => {
+app.get('/health', (req, res) => {
   res.json({
     status: 'OK',
     message: 'YTDownloader server funcionando correctamente',
